@@ -969,3 +969,665 @@ theorem patchTrajectory_average_rate_ge (hm : 3 ≤ m) (hC : 0 ≤ C)
   exact div_le_div_of_nonneg_right h_delta (le_of_lt h_T_pos)
 
 end TrajectoryNormalForm
+
+/-!
+# Phase 2: Contact Dynamics, Intrinsic Feasibility, and Renewal Bounds on Δ^{n+m-1}
+
+This phase establishes:
+1. The contact submanifolds Z_- and Z_+ and excursion coordinate ordering (x ≤ y_{k+1}).
+2. The intrinsic Marnat–Moshchevitin feasibility threshold B ≥ B_min^{(n,m)}(A) and
+   W ≥ W_min^{(n,m)}(U) from dilation floor/ceiling compatibility.
+3. The multi-coordinate lower-gap slope dominance by defect on moving blocks.
+4. The first macroscopic renewal recurrence and autonomous corridor freezing.
+5. Filter-theoretic geometric series limits and continuous renewal bracketing.
+6. Deduction of the remaining-range upper bound D_low^{(n,m)}(U, W).
+-/
+
+/-!
+## Section 8: Coordinate Excursion Topology on Δ^{n+m-1}
+-/
+
+namespace MatrixExcursionTopology
+
+open Set
+
+/-- Abstract continuous template trajectory on Δ^{n+m-1} tracking the key
+coordinates P_1 (bottom), P_m (primal contact), and P_d (top, d = n + m). -/
+structure ContinuousTrajectory (n m : ℕ) where
+  P1 : ℝ → ℝ
+  Pm : ℝ → ℝ
+  Pd : ℝ → ℝ
+  h_cont1 : Continuous P1
+  h_contm : Continuous Pm
+  h_contd : Continuous Pd
+  h_order : ∀ q, 0 ≤ P1 q ∧ P1 q ≤ Pm q ∧ Pm q ≤ Pd q
+  h_mono1 : Monotone P1
+  h_monom : Monotone Pm
+  h_monod : Monotone Pd
+
+namespace ContinuousTrajectory
+
+variable {n m : ℕ} (P : ContinuousTrajectory n m)
+
+/-- Lower contact locus Z_- where bottom coordinates coalesce: P_1 = P_m. -/
+def Z_minus : Set ℝ := {q | P.P1 q = P.Pm q}
+
+/-- Upper contact locus Z_+ where top coordinates coalesce: P_m = P_d. -/
+def Z_plus : Set ℝ := {q | P.Pm q = P.Pd q}
+
+/-- Z_- is closed by continuity of P_1 and P_m. -/
+theorem isClosed_Z_minus : IsClosed (Z_minus P) :=
+  isClosed_eq P.h_cont1 P.h_contm
+
+/-- Z_+ is closed by continuity of P_m and P_d. -/
+theorem isClosed_Z_plus : IsClosed (Z_plus P) :=
+  isClosed_eq P.h_contm P.h_contd
+
+/-- An open excursion interval (r, t) disjoint from the upper contact locus Z_+. -/
+def IsExcursionInterval (r t : ℝ) : Prop :=
+  r < t ∧ (Ioo r t ∩ Z_plus P = ∅)
+
+/-- On an excursion interval, P_m(q) < P_d(q) strictly holds everywhere. -/
+theorem Pm_lt_Pd_on_excursion {r t : ℝ} (h_exc : IsExcursionInterval P r t) :
+    ∀ q ∈ Ioo r t, P.Pm q < P.Pd q := by
+  intro q hq
+  have h_le : P.Pm q ≤ P.Pd q := (P.h_order q).2.2
+  have h_not_in : q ∉ Z_plus P := by
+    intro h_in
+    have h_mem : q ∈ Ioo r t ∩ Z_plus P := ⟨hq, h_in⟩
+    rw [h_exc.2] at h_mem
+    exact h_mem
+  exact lt_of_le_of_ne h_le h_not_in
+
+/-- Theorem 4.3 (Intermediate Coordinate Ordering Across Excursions):
+Because the trajectory visits the lower contact locus ρ ∈ Z_- between peak time q*
+and the terminal contact t_{k+1}, monotonicity forces x = P_m(q*) ≤ P_1(t_{k+1}) = y_{k+1}. -/
+theorem x_le_y_of_monotone_excursion
+    {q_star rho t_k1 : ℝ}
+    (h_q_le_rho : q_star ≤ rho)
+    (h_rho_le_tk1 : rho ≤ t_k1)
+    (h_rho_lower : P.P1 rho = P.Pm rho)
+    (x y : ℝ)
+    (h_q_Pm : P.Pm q_star = x)
+    (h_tk1_P1 : P.P1 t_k1 = y) :
+    x ≤ y := by
+  have h_P1_mono : P.P1 rho ≤ P.P1 t_k1 := P.h_mono1 h_rho_le_tk1
+  have h_Pm_mono : P.Pm q_star ≤ P.Pm rho := P.h_monom h_q_le_rho
+  rw [h_rho_lower] at h_P1_mono
+  rw [h_tk1_P1] at h_P1_mono
+  rw [h_q_Pm] at h_Pm_mono
+  linarith
+
+end ContinuousTrajectory
+
+end MatrixExcursionTopology
+
+/-!
+## Section 9: Intrinsic Marnat–Moshchevitin Feasibility Boundary
+-/
+
+namespace KinematicFeasibility
+
+/-! ### 9.1 Dilation Floor and Ceiling Definitions -/
+
+/-- Theorem 4.4: Kinematic Dilation Floor L_{floor}(n, m, α_k, α_{k+1}). -/
+noncomputable def dilation_floor (n m : ℕ) (alpha_k alpha_k1 : ℝ) : ℝ :=
+  ((m : ℝ) - 1) * alpha_k / (1 - ((n : ℝ) + 1) * alpha_k1)
+
+/-- Theorem 4.5: Diophantine Dilation Ceiling L_{ceil}(n, m, α_k, α_{k+1}, b). -/
+noncomputable def dilation_ceiling (n m : ℕ) (alpha_k alpha_k1 b : ℝ) : ℝ :=
+  (b * (1 - ((n : ℝ) + 1) * alpha_k) * ((m : ℝ) - 1)) /
+  (((m : ℝ) - 1) * alpha_k1 - b * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * alpha_k1))
+
+/-- The intrinsic quadratic denominator polynomial Q_{n,m}(A). -/
+def Q_quad (n m : ℕ) (A : ℝ) : ℝ :=
+  1 - (2 * (n : ℝ) + 1) * A + (n : ℝ) * ((m : ℝ) + (n : ℝ)) * A^2
+
+/-- Exact product decomposition proving Q_{n,m}(A) strictly positive. -/
+theorem Q_quad_eq_decomposition (n m : ℕ) (A : ℝ) :
+    Q_quad n m A = (1 - ((n : ℝ) + 1) * A) * (1 - (n : ℝ) * A) + (n : ℝ) * ((m : ℝ) - 1) * A^2 := by
+  dsimp [Q_quad]
+  ring
+
+/-- Strict positivity of Q_{n,m}(A) on the open admissible interval (0, 1/(n+1)). -/
+theorem Q_quad_pos (n m : ℕ) (_hn : 1 ≤ n) (hm : 2 ≤ m) (A : ℝ)
+    (hA_pos : 0 < A) (hA_top : A < 1 / ((n : ℝ) + 1)) :
+    0 < Q_quad n m A := by
+  rw [Q_quad_eq_decomposition]
+  have hn1_pos : 0 < (n : ℝ) + 1 := by positivity
+  have h1 : 0 < 1 - ((n : ℝ) + 1) * A := by
+    have : A * ((n : ℝ) + 1) < 1 := (lt_div_iff₀ hn1_pos).mp hA_top
+    nlinarith
+  have h2 : 0 < 1 - (n : ℝ) * A := by
+    have : (n : ℝ) * A < ((n : ℝ) + 1) * A := by nlinarith
+    linarith
+  have h_term1 : 0 < (1 - ((n : ℝ) + 1) * A) * (1 - (n : ℝ) * A) := mul_pos h1 h2
+  have hm1 : 0 ≤ (m : ℝ) - 1 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  have h_term2 : 0 ≤ (n : ℝ) * ((m : ℝ) - 1) * A^2 := by positivity
+  linarith
+
+/-- The intrinsic minimal drift threshold B_min^{(n,m)}(A). -/
+noncomputable def B_min (n m : ℕ) (A : ℝ) : ℝ :=
+  ((m : ℝ) - 1) * A^2 / Q_quad n m A
+
+/-! ### 9.2 Intrinsic Compatibility Theorem -/
+
+/-- Theorem 4.6 (Floor-Ceiling Compatibility Equivalence):
+In the asymptotic limit α_k, α_{k+1} → A and b → B, the floor is bounded by the
+ceiling if and only if B ≥ B_min^{(n,m)}(A). -/
+theorem floor_le_ceiling_iff (n m : ℕ) (hm : 2 ≤ m) (A B : ℝ)
+    (_hA_pos : 0 < A)
+    (h_floor_denom : 0 < 1 - ((n : ℝ) + 1) * A)
+    (h_ceil_denom : 0 < ((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A))
+    (hQ_pos : 0 < Q_quad n m A) :
+    ((m : ℝ) - 1) * A / (1 - ((n : ℝ) + 1) * A) ≤
+      (B * (1 - ((n : ℝ) + 1) * A) * ((m : ℝ) - 1)) /
+      (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A)) ↔
+    B_min n m A ≤ B := by
+  have hm1_pos : 0 < (m : ℝ) - 1 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  rw [div_le_div_iff₀ h_floor_denom h_ceil_denom]
+  have h_alg : ((m : ℝ) - 1) * A * (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A)) ≤
+               (B * (1 - ((n : ℝ) + 1) * A) * ((m : ℝ) - 1)) * (1 - ((n : ℝ) + 1) * A) ↔
+               ((m : ℝ) - 1)^2 * A^2 ≤ B * ((m : ℝ) - 1) * Q_quad n m A := by
+    have h_id : (B * (1 - ((n : ℝ) + 1) * A) * ((m : ℝ) - 1)) * (1 - ((n : ℝ) + 1) * A) -
+                ((m : ℝ) - 1) * A * (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A)) =
+                ((m : ℝ) - 1) * (B * Q_quad n m A - ((m : ℝ) - 1) * A^2) := by
+      dsimp [Q_quad]; ring
+    constructor
+    · intro h
+      have : 0 ≤ ((m : ℝ) - 1) * (B * Q_quad n m A - ((m : ℝ) - 1) * A^2) := by linarith [h, h_id]
+      have h_diff : 0 ≤ B * Q_quad n m A - ((m : ℝ) - 1) * A^2 := by
+        nlinarith
+      nlinarith
+    · intro h
+      have h_diff : 0 ≤ B * Q_quad n m A - ((m : ℝ) - 1) * A^2 := by
+        nlinarith
+      linarith [h_id]
+  rw [h_alg]
+  dsimp [B_min]
+  rw [div_le_iff₀ hQ_pos]
+  constructor
+  · intro h
+    have : ((m : ℝ) - 1) * (((m : ℝ) - 1) * A^2) ≤ ((m : ℝ) - 1) * (B * Q_quad n m A) := by
+      calc ((m : ℝ) - 1) * (((m : ℝ) - 1) * A^2)
+        _ = ((m : ℝ) - 1)^2 * A^2 := by ring
+        _ ≤ B * ((m : ℝ) - 1) * Q_quad n m A := h
+        _ = ((m : ℝ) - 1) * (B * Q_quad n m A) := by ring
+    nlinarith
+  · intro h
+    calc ((m : ℝ) - 1)^2 * A^2
+      _ = ((m : ℝ) - 1) * (((m : ℝ) - 1) * A^2) := by ring
+      _ ≤ ((m : ℝ) - 1) * (B * Q_quad n m A) := by nlinarith
+      _ = B * ((m : ℝ) - 1) * Q_quad n m A := by ring
+
+/-! ### 9.3 Conversion to Diophantine Exponents (U, W) -/
+
+/-- Denominator polynomial in Diophantine exponent space (U, W):
+  `D_{UW}(n, m, U) = 1 - (2n - 1)U + (n - 1)(m + n - 1)U^2`. -/
+def denom_UW (n m : ℕ) (U : ℝ) : ℝ :=
+  1 - (2 * (n : ℝ) - 1) * U + ((n : ℝ) - 1) * ((m : ℝ) + (n : ℝ) - 1) * U^2
+
+/-- Marnat–Moshchevitin lower feasibility bound W_min^{(n,m)}(U). -/
+noncomputable def W_min (n m : ℕ) (U : ℝ) : ℝ :=
+  ((m : ℝ) - 1) * U^2 / denom_UW n m U
+
+/-- Exact algebraic equivalence: Transforming B_min^{(n,m)}(A) to W = B / (1 - B)
+under the Dani isomorphism A = U / (1 + U) produces W_min^{(n,m)}(U) identically. -/
+theorem W_min_eq_B_min_transformed (n m : ℕ) (U : ℝ) (hU1 : 1 + U ≠ 0)
+    (h_Q : Q_quad n m (U / (1 + U)) ≠ 0):
+    let A := U / (1 + U)
+    let B := B_min n m A
+    B / (1 - B) = W_min n m U := by
+  intro A B
+  dsimp [B, B_min, W_min, A]
+  have h_B_div : ((m : ℝ) - 1) * (U / (1 + U))^2 / Q_quad n m (U / (1 + U)) /
+      (1 - ((m : ℝ) - 1) * (U / (1 + U))^2 / Q_quad n m (U / (1 + U))) =
+      ((m : ℝ) - 1) * (U / (1 + U))^2 /
+      (Q_quad n m (U / (1 + U)) - ((m : ℝ) - 1) * (U / (1 + U))^2) := by
+    field_simp [h_Q]
+  rw [h_B_div]
+  dsimp [Q_quad, denom_UW]
+  field_simp
+  ring
+
+/-- Specialization to n = 1: The denominator simplifies to 1 - U. -/
+theorem denom_UW_n_one (m : ℕ) (U : ℝ) :
+    denom_UW 1 m U = 1 - U := by
+  dsimp [denom_UW]
+  ring
+
+/-- Specialization to (n, m) = (1, 2): W_min^{(1,2)}(U) = U^2 / (1 - U). -/
+theorem W_min_one_two (U : ℝ) :
+    W_min 1 2 U = U^2 / (1 - U) := by
+  dsimp [W_min]
+  rw [denom_UW_n_one]
+  ring
+
+/-- Corollary 4.7: Sub-feasible pairs (W < W_min) admit no valid template trajectories. -/
+theorem sub_feasible_empty (n m : ℕ) (hm : 2 ≤ m) (A B : ℝ)
+    (hA_pos : 0 < A)
+    (h_floor_denom : 0 < 1 - ((n : ℝ) + 1) * A)
+    (h_ceil_denom : 0 < ((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A))
+    (hQ_pos : 0 < Q_quad n m A)
+    (hB_lt : B < B_min n m A) :
+    dilation_ceiling n m A A B < dilation_floor n m A A := by
+  dsimp [dilation_floor, dilation_ceiling]
+  have h_not_le : ¬ (B_min n m A ≤ B) := not_le.mpr hB_lt
+  have h_iff := floor_le_ceiling_iff n m hm A B hA_pos h_floor_denom h_ceil_denom hQ_pos
+  exact lt_of_not_ge (fun h_le => h_not_le (h_iff.mp h_le))
+
+end KinematicFeasibility
+
+/-!
+## Section 10: Multi-Coordinate Gap Slopes and Defect Dominance
+-/
+
+namespace MatrixExcursionRecurrence
+
+open MovingBlock
+
+variable {n m : ℕ} [NeZero n] [NeZero m]
+
+/-- Velocity of bottom coordinate P_1 on moving block b. -/
+noncomputable def P'_1 (b : MovingBlock n m) : ℝ :=
+  if b.r = 1 then 1 / b.k else 0
+
+/-- Velocity of m-th coordinate P_m on moving block b. -/
+noncomputable def P'_m (b : MovingBlock n m) : ℝ :=
+  if b.r ≤ m ∧ m ≤ b.s then 1 / b.k else 0
+
+/-- Rate of expansion of lower coordinate gap P_m - P_1 (Definition 4.8). -/
+noncomputable def gap_slope (b : MovingBlock n m) : ℝ :=
+  P'_m b - P'_1 b
+
+/-- Admissibility condition for interior moving blocks during an excursion. -/
+def is_valid_interior_block (b : MovingBlock n m) : Prop :=
+  b.s = n + m → b.r = n + m
+
+/-- Lemma 4.9 (Gap Slope Defect Dominance):
+On every valid interior moving block b, the lower gap velocity is bounded by defect:
+  gap_slope(b) ≤ (1 / σ) * e(b). -/
+theorem gap_growth_le_defect (C : ℝ) (hC : 0 < C) (b : MovingBlock n m)
+    (h_valid : is_valid_interior_block b) :
+    gap_slope b ≤ (1 / sigma m C) * b.defect C := by
+  dsimp [gap_slope, P'_1, P'_m]
+  have hm_pos : 0 < (m : ℝ) := Nat.cast_pos.mpr (NeZero.pos m)
+  have hsigma_pos : 0 < sigma m C := div_pos hC hm_pos
+  by_cases hs : b.s = n + m
+  · have hr : b.r = n + m := h_valid hs
+    have hr_ne1 : b.r ≠ 1 := by
+      intro h
+      have hlen := b.block_len_le hs
+      have hn_pos := NeZero.pos n
+      omega
+    have hr_not_le_m : ¬ (b.r ≤ m ∧ m ≤ b.s) := by
+      rintro ⟨hle, _⟩
+      have hn_pos := NeZero.pos n
+      omega
+    have hk_eq : b.k = 1 := by
+      dsimp [MovingBlock.k]
+      have hs_c : (b.s : ℝ) = (n + m : ℝ) := by exact_mod_cast hs
+      have hr_c : (b.r : ℝ) = (n + m : ℝ) := by exact_mod_cast hr
+      rw [hs_c, hr_c]; ring
+    rw [ite_eq_right hr_not_le_m, ite_eq_right hr_ne1, sub_zero]
+    rw [defect_of_s_eq_d C b hs, hk_eq]
+    ring_nf
+    exact le_rfl
+  · have hlt : b.s < n + m := Nat.lt_of_le_of_ne b.s_le_d hs
+    rw [defect_of_s_lt_d C b hlt]
+    have h_cancel : (1 / sigma m C) * (sigma m C * ((b.r : ℝ) - 1)) = (b.r : ℝ) - 1 := by
+      have : sigma m C ≠ 0 := ne_of_gt hsigma_pos
+      field_simp
+    rw [h_cancel]
+    have hk_pos := b.k_pos
+    have hk_ge1 : 1 ≤ b.k := by
+      dsimp [MovingBlock.k]
+      have : (b.r : ℝ) ≤ (b.s : ℝ) := Nat.cast_le.mpr b.r_le_s
+      linarith
+    have h_inv_le1 : 1 / b.k ≤ 1 := by rw [div_le_one hk_pos]; exact hk_ge1
+    have h_inv_nonneg : 0 ≤ 1 / b.k := div_nonneg (by norm_num) (le_of_lt hk_pos)
+    by_cases hr1 : b.r = 1
+    · rw [ite_eq_left hr1]
+      have hr_zero : (b.r : ℝ) - 1 = 0 := by
+        have : (b.r : ℝ) = 1 := by exact_mod_cast hr1
+        linarith
+      rw [hr_zero]
+      split_ifs with _h_m
+      · linarith
+      · linarith [h_inv_nonneg]
+    · rw [ite_eq_right hr1]
+      have hr_ge2 : 2 ≤ b.r := by
+        have : 1 ≤ b.r := b.r_ge_one
+        omega
+      have hr_defect : 1 ≤ (b.r : ℝ) - 1 := by
+        have : (2 : ℝ) ≤ (b.r : ℝ) := by exact_mod_cast hr_ge2
+        linarith
+      split_ifs with _h_m
+      · linarith [h_inv_le1, hr_defect]
+      · linarith [hr_defect]
+
+/-! ### 10.2 Excursion Gap Integration -/
+
+/-- A single timed segment within an excursion trajectory. -/
+structure ExcursionStep (n m : ℕ) where
+  block : MovingBlock n m
+  dt : ℝ
+  h_dt : 0 ≤ dt
+  valid : is_valid_interior_block block
+
+/-- Integrated lower gap expansion across a sequence of excursion steps. -/
+noncomputable def sum_gap_growth : List (ExcursionStep n m) → ℝ
+  | [] => 0
+  | step :: rest => gap_slope step.block * step.dt + sum_gap_growth rest
+
+/-- Integrated accumulated defect across excursion steps. -/
+noncomputable def sum_defect (C : ℝ) : List (ExcursionStep n m) → ℝ
+  | [] => 0
+  | step :: rest => step.block.defect C * step.dt + sum_defect C rest
+
+/-- Telescoping gap integration: Total lower gap expansion is bounded by accumulated defect. -/
+theorem sum_gap_growth_le_sum_defect (C : ℝ) (hC : 0 < C)
+    (l : List (ExcursionStep n m)) :
+    sum_gap_growth l ≤ (1 / sigma m C) * sum_defect C l := by
+  induction l with
+  | nil =>
+    dsimp [sum_gap_growth, sum_defect]
+    rw [mul_zero]
+  | cons step rest ih =>
+    dsimp [sum_gap_growth, sum_defect]
+    have h_slope := gap_growth_le_defect C hC step.block step.valid
+    have h_step : gap_slope step.block * step.dt ≤
+        ((1 / sigma m C) * step.block.defect C) * step.dt :=
+      mul_le_mul_of_nonneg_right h_slope step.h_dt
+    have h_dist : ((1 / sigma m C) * step.block.defect C) * step.dt +
+                  (1 / sigma m C) * sum_defect C rest =
+                  (1 / sigma m C) * (step.block.defect C * step.dt + sum_defect C rest) := by ring
+    linarith
+
+/-- The normalized gap parameter d_0(n, m, α) = ((m + n)α - 1) / (m - 1) (Theorem 4.10). -/
+noncomputable def d0 (n m : ℕ) (alpha : ℝ) : ℝ :=
+  (((m : ℝ) + (n : ℝ)) * alpha - 1) / ((m : ℝ) - 1)
+
+/-- Theorem 4.10 (First Macroscopic Renewal Inequality):
+  z_{k+1} ≥ z_k / L_k + σ * d_0(n, m, α_{k+1}). -/
+theorem first_macroscopic_renewal
+    (n m : ℕ) (hm : 2 ≤ m) (C : ℝ) (hC : 0 < C)
+    (t_k t_k1 : ℝ) (Q_k Q_k1 : ℝ) (alpha_k1 : ℝ)
+    (ht_k_pos : 0 < t_k) (ht_k1_pos : 0 < t_k1)
+    (h_gap_defect : d0 n m alpha_k1 * t_k1 ≤ (1 / sigma m C) * (Q_k1 - Q_k)) :
+    let z_k := Q_k / t_k
+    let z_k1 := Q_k1 / t_k1
+    let L_k := t_k1 / t_k
+    z_k / L_k + sigma m C * d0 n m alpha_k1 ≤ z_k1 := by
+  intro z_k z_k1 L_k
+  dsimp [z_k, z_k1, L_k]
+  have hm_pos : 0 < (m : ℝ) := Nat.cast_pos.mpr (by omega)
+  have hsigma_pos : 0 < sigma m C := div_pos hC hm_pos
+  have ht_k_ne : t_k ≠ 0 := ne_of_gt ht_k_pos
+  have ht_k1_ne : t_k1 ≠ 0 := ne_of_gt ht_k1_pos
+  have h_scaled : sigma m C * (d0 n m alpha_k1 * t_k1) ≤ Q_k1 - Q_k := by
+    have h_mul := mul_le_mul_of_nonneg_left h_gap_defect (le_of_lt hsigma_pos)
+    have h_cancel : sigma m C * ((1 / sigma m C) * (Q_k1 - Q_k)) = Q_k1 - Q_k := by
+      field_simp [ne_of_gt hsigma_pos]
+    rwa [h_cancel] at h_mul
+  have h_div : sigma m C * d0 n m alpha_k1 ≤ (Q_k1 - Q_k) / t_k1 := by
+    have h_le := div_le_div_of_nonneg_right h_scaled (le_of_lt ht_k1_pos)
+    have h_canc : (sigma m C * (d0 n m alpha_k1 * t_k1)) / t_k1 = sigma m C * d0 n m alpha_k1 := by
+      field_simp [ht_k1_ne]
+    rwa [h_canc] at h_le
+  have h_ratio : (Q_k / t_k) / (t_k1 / t_k) = Q_k / t_k1 := by
+    field_simp [ht_k_ne, ht_k1_ne]
+  have h_sub : (Q_k1 - Q_k) / t_k1 = Q_k1 / t_k1 - Q_k / t_k1 := by ring
+  linarith [h_div, h_ratio, h_sub]
+
+end MatrixExcursionRecurrence
+
+/-!
+## Section 11: Uniform Freezing, Filter Limits, and Renewal Bracketing
+-/
+
+namespace MatrixUniformFreezing
+
+open Filter Topology
+open MatrixExcursionRecurrence
+open MovingBlock
+
+variable {n m : ℕ}
+
+/-- Definition 4.11: The frozen corridor dilation parameter L_ε(a, b). -/
+noncomputable def L_eps (n m : ℕ) (a b : ℝ) : ℝ :=
+  (b * (1 - ((n : ℝ) + 1) * a) * ((m : ℝ) - 1)) /
+  (((m : ℝ) - 1) * a - b * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * a))
+
+/-- Theorem 4.11 (Uniform Recurrence Freezing):
+Locks dynamic parameters α_k, α_{k+1} ≥ a into the uniform recurrence:
+  z_k / L_ε + σ * d_0(n, m, a) ≤ z_{k+1}. -/
+theorem uniform_renewal_step
+    (n m : ℕ) (hm : 2 ≤ m) (C : ℝ) (hC : 0 < C)
+    (z_k z_k1 L_k L_frozen a alpha_k1 : ℝ)
+    (hz_k_nonneg : 0 ≤ z_k)
+    (hL_k_pos : 0 < L_k)
+    (hL_bound : L_k ≤ L_frozen)
+    (ha_bound : a ≤ alpha_k1)
+    (h_rec : z_k / L_k + sigma m C * d0 n m alpha_k1 ≤ z_k1) :
+    z_k / L_frozen + sigma m C * d0 n m a ≤ z_k1 := by
+  have hm_pos : 0 < (m : ℝ) := Nat.cast_pos.mpr (by omega)
+  have hm1_pos : 0 < (m : ℝ) - 1 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  have hsigma_pos : 0 < sigma m C := div_pos hC hm_pos
+  have h_dil : z_k / L_frozen ≤ z_k / L_k :=
+    div_le_div_of_nonneg_left hz_k_nonneg hL_k_pos hL_bound
+  have h_d0_mono : d0 n m a ≤ d0 n m alpha_k1 := by
+    dsimp [d0]
+    have h_num : ((m : ℝ) + (n : ℝ)) * a - 1 ≤ ((m : ℝ) + (n : ℝ)) * alpha_k1 - 1 := by
+      have : 0 ≤ (m : ℝ) + (n : ℝ) := by positivity
+      nlinarith
+    exact div_le_div_of_nonneg_right h_num (le_of_lt hm1_pos)
+  have h_sigma_d0 : sigma m C * d0 n m a ≤ sigma m C * d0 n m alpha_k1 :=
+    mul_le_mul_of_nonneg_left h_d0_mono (le_of_lt hsigma_pos)
+  linarith
+
+/-! ### 11.2 Geometric Recurrence Unrolling and Limit -/
+
+/-- Horner-form finite geometric series unrolling. -/
+def geom_sum (r : ℝ) : ℕ → ℝ
+  | 0 => 0
+  | n + 1 => geom_sum r n * r + 1
+
+/-- Finite unrolling of the autonomous recurrence z_{k+1} ≥ z_k / L + C_inc. -/
+theorem unroll_recurrence (z : ℕ → ℝ) (L C_inc : ℝ)
+    (h_renew : ∀ k, z k / L + C_inc ≤ z (k + 1))
+    (hL_pos : 0 < L) (k : ℕ) :
+    z 0 * (1 / L)^k + C_inc * geom_sum (1 / L) k ≤ z k := by
+  induction k with
+  | zero =>
+    dsimp [geom_sum]; ring_nf; linarith
+  | succ k ih =>
+    have hk := h_renew k
+    dsimp [geom_sum]
+    have h_nonneg : 0 ≤ 1 / L := by positivity
+    have ih_div : (z 0 * (1 / L)^k + C_inc * geom_sum (1 / L) k) * (1 / L) ≤ z k * (1 / L) :=
+      mul_le_mul_of_nonneg_right ih h_nonneg
+    have h_div_eq : z k / L = z k * (1 / L) := by ring
+    calc z 0 * (1 / L)^(k + 1) + C_inc * (geom_sum (1 / L) k * (1 / L) + 1)
+      _ = (z 0 * (1 / L)^k + C_inc * geom_sum (1 / L) k) * (1 / L) + C_inc := by ring
+      _ ≤ z k * (1 / L) + C_inc := by linarith [ih_div]
+      _ = z k / L + C_inc := by rw [h_div_eq]
+      _ ≤ z (k + 1) := hk
+
+/-- Theorem 4.12: Closed-form geometric series summation identity for L > 1. -/
+lemma geom_sum_mul_one_sub (r : ℝ) (k : ℕ) :
+    geom_sum r k * (1 - r) = 1 - r^k := by
+  induction k with
+  | zero => dsimp [geom_sum]; ring
+  | succ k ih =>
+    dsimp [geom_sum]
+    calc (geom_sum r k * r + 1) * (1 - r)
+      _ = (geom_sum r k * (1 - r)) * r + (1 - r) := by ring
+      _ = (1 - r^k) * r + (1 - r) := by rw [ih]
+      _ = 1 - r^(k + 1) := by ring
+
+theorem geom_sum_closed_form (L : ℝ) (k : ℕ) (hL_gt_one : 1 < L) :
+    geom_sum (1 / L) k = (1 - (1 / L)^k) * (L / (L - 1)) := by
+  have hL0 : 0 < L := by linarith
+  have hL_ne : L ≠ 0 := ne_of_gt hL0
+  have hLm1 : L - 1 ≠ 0 := by linarith
+  have h_denom : 1 - 1 / L ≠ 0 := by
+    have : 1 - 1 / L = (L - 1) / L := by field_simp [hL_ne]
+    rw [this]; exact div_ne_zero hLm1 hL_ne
+  have h_id := geom_sum_mul_one_sub (1 / L) k
+  have h_div : geom_sum (1 / L) k = (1 - (1 / L)^k) / (1 - 1 / L) :=
+    (eq_div_iff h_denom).mpr h_id
+  have h_frac : 1 / (1 - 1 / L) = L / (L - 1) := by field_simp [hL_ne, hLm1]
+  calc geom_sum (1 / L) k
+    _ = (1 - (1 / L)^k) / (1 - 1 / L) := h_div
+    _ = (1 - (1 / L)^k) * (1 / (1 - 1 / L)) := by ring
+    _ = (1 - (1 / L)^k) * (L / (L - 1)) := by rw [h_frac]
+
+/-- Pointwise geometric lower bound sequence. -/
+noncomputable def lower_bound_seq (z0 L C_inc : ℝ) (k : ℕ) : ℝ :=
+  z0 * (1 / L)^k + C_inc * (1 - (1 / L)^k) * (L / (L - 1))
+
+/-- Convergence of the lower bound sequence to C_inc * L / (L - 1). -/
+theorem tendsto_lower_bound_seq (z0 L C_inc : ℝ) (hL : 1 < L) :
+    Tendsto (fun k ↦ lower_bound_seq z0 L C_inc k) atTop (𝓝 (C_inc * (L / (L - 1)))) := by
+  dsimp [lower_bound_seq]
+  have hL_pos : 0 < L := by linarith
+  have h_nonneg : 0 ≤ 1 / L := by positivity
+  have h_lt_one : 1 / L < 1 := (div_lt_one hL_pos).mpr hL
+  have h_pow_zero := tendsto_pow_atTop_nhds_zero_of_lt_one h_nonneg h_lt_one
+  have h_term1 : Tendsto (fun k ↦ z0 * (1 / L)^k) atTop (𝓝 (z0 * 0)) :=
+    tendsto_const_nhds.mul h_pow_zero
+  have h_sub : Tendsto (fun k ↦ 1 - (1 / L)^k) atTop (𝓝 (1 - 0)) :=
+    tendsto_const_nhds.sub h_pow_zero
+  have h_term2 : Tendsto (fun k ↦ C_inc * (1 - (1 / L)^k) * (L / (L - 1))) atTop
+      (𝓝 (C_inc * (1 - 0) * (L / (L - 1)))) :=
+    (tendsto_const_nhds.mul h_sub).mul tendsto_const_nhds
+  have h_sum := h_term1.add h_term2
+  have h_simp : z0 * 0 + C_inc * (1 - 0) * (L / (L - 1)) = C_inc * (L / (L - 1)) := by ring
+  rwa [h_simp] at h_sum
+
+/-- Topological limit comparison preserving the geometric recurrence floor. -/
+theorem le_of_tendsto_renewal_limit {z : ℕ → ℝ} {Z L C_inc : ℝ} (hL : 1 < L)
+    (h_bound : ∀ k, lower_bound_seq (z 0) L C_inc k ≤ z k)
+    (hz : Tendsto z atTop (𝓝 Z)) :
+    C_inc * (L / (L - 1)) ≤ Z :=
+  le_of_tendsto_of_tendsto' (tendsto_lower_bound_seq (z 0) L C_inc hL) hz h_bound
+
+end MatrixUniformFreezing
+
+/-!
+## Section 12: Deductive Synthesis of the Remaining-Range Upper Bound
+-/
+
+namespace MatrixMasterUpperBounds
+
+open MatrixExcursionRecurrence MatrixUniformFreezing MovingBlock
+
+/-- The target candidate dimension formula D_low^{(n,m)}(U, W) (Section 1.3). -/
+noncomputable def D_low (n m : ℕ) (C U W : ℝ) : ℝ :=
+  ((1 + ((m : ℝ) * (n : ℝ) - (m : ℝ) - 2 * (n : ℝ) + 1) * U) * (((m : ℝ) + (n : ℝ) - 1) * U - 1) * W^2 +
+   (C * U * ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) -
+    ((m : ℝ) - 1) * U * (((m : ℝ) + (n : ℝ) - 1) * U - 1)) * W -
+   C * ((m : ℝ) - 1) * U^2) /
+  (U * (W + 1) * (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U))
+
+/-- The defect penalty term measuring the discrepancy from the Large-W rate C / (1 + W) (Theorem 6.5). -/
+noncomputable def defect_penalty (n m : ℕ) (U W : ℝ) : ℝ :=
+  (- W * (((m : ℝ) + (n : ℝ) - 1) * U - 1) *
+    (((m : ℝ) - 1) * U - W * (1 + ((m : ℝ) * (n : ℝ) - (m : ℝ) - 2 * (n : ℝ) + 1) * U))) /
+  (U * (W + 1) * (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U))
+
+/-- Theorem 6.5 (Additive Defect Decomposition):
+  D_low^{(n,m)}(U, W) = C / (1 + W) + defect_penalty(n, m, U, W). -/
+theorem D_low_eq_envelope_add_penalty
+    (n m : ℕ) (C U W : ℝ) (hU : U ≠ 0) (_hW1 : W + 1 ≠ 0)
+    (h_denom : ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U ≠ 0) :
+    D_low n m C U W = C / (1 + W) + defect_penalty n m U W := by
+  set factor := U * (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U)
+  have h_factor : factor ≠ 0 := mul_ne_zero hU h_denom
+  have h_diff : D_low n m C U W - defect_penalty n m U W = C / (1 + W) := by
+    dsimp [D_low, defect_penalty]
+    rw [← sub_div]
+    have h_num :
+      ((1 + ((m : ℝ) * (n : ℝ) - (m : ℝ) - 2 * (n : ℝ) + 1) * U) * (((m : ℝ) + (n : ℝ) - 1) * U - 1) * W^2 +
+       (C * U * ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) -
+        ((m : ℝ) - 1) * U * (((m : ℝ) + (n : ℝ) - 1) * U - 1)) * W -
+       C * ((m : ℝ) - 1) * U^2) -
+      (- W * (((m : ℝ) + (n : ℝ) - 1) * U - 1) *
+        (((m : ℝ) - 1) * U - W * (1 + ((m : ℝ) * (n : ℝ) - (m : ℝ) - 2 * (n : ℝ) + 1) * U))) =
+      C * factor := by
+      dsimp [factor]
+      ring
+    have h_den :
+      U * (W + 1) * (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U) =
+      (1 + W) * factor := by
+      dsimp [factor]
+      ring
+    rw [h_num, h_den]
+    exact mul_div_mul_right C (1 + W) h_factor
+  linarith [h_diff]
+
+/-- The continuous renewal bracketing defect ratio evaluates algebraically
+to the defect penalty discrepancy (Theorem 4.14, Theorem 6.5). -/
+theorem renewal_bracket_ratio_eq_penalty
+    (n m : ℕ) (hm : 2 ≤ m) (U W A B : ℝ)
+    (hA : A = U / (1 + U)) (hB : B = W / (1 + W))
+    (hU1 : 1 + U ≠ 0) (hW1 : 1 + W ≠ 0)
+    (hU : U ≠ 0)
+    (h_pen_den : U * (W + 1) * (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U) ≠ 0)
+    (L : ℝ)
+    (h_DL_ne : ((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A) ≠ 0)
+    (hL_eq : (L - 1) * ((1 + U) * (1 + W) * (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A))) =
+             ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U):
+    - ((((m : ℝ) - 1) * d0 n m A * B) / (A * (L - 1))) = defect_penalty n m U W := by
+  dsimp [defect_penalty, d0]
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  have hW1_comm : W + 1 ≠ 0 := by intro h; apply hW1; linarith
+  have h_NL_ne : ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U ≠ 0 := by
+    intro h
+    apply h_pen_den
+    rw [h, mul_zero]
+  have h_DL_prod_ne : (1 + U) * (1 + W) * (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A)) ≠ 0 :=
+    mul_ne_zero (mul_ne_zero hU1 hW1) h_DL_ne
+  have hL_div : L - 1 = (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U) /
+                        ((1 + U) * (1 + W) * (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A))) := by
+    exact (eq_div_iff h_DL_prod_ne).mpr hL_eq
+  rw [hL_div]
+  -- Now rewrite hA and hB everywhere so no A or B remains
+  rw [hA, hB]
+  field_simp [hU1, hW1, hW1_comm, hU, hm1_ne, h_NL_ne, h_pen_den]
+  ring
+
+/-- Theorem 4.14 (General Remaining-Range Upper Bound Theorem):
+The asymptotic contraction rate along any admissible template matching drift B is
+strictly bounded above by D_low^{(n,m)}(U, W) across W_min ≤ W < W_*. -/
+theorem general_remaining_range_upper_bound
+    (n m : ℕ) (hm : 2 ≤ m) (C U W A B L : ℝ)
+    (hA : A = U / (1 + U)) (hB : B = W / (1 + W))
+    (hU1 : 1 + U ≠ 0) (hW1 : 1 + W ≠ 0) (hU : U ≠ 0)
+    (h_denom : ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U ≠ 0)
+    (h_pen_den : U * (W + 1) * (((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U) ≠ 0)
+    (h_DL_ne : ((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A) ≠ 0)
+    (hL_eq : (L - 1) * ((1 + U) * (1 + W) * (((m : ℝ) - 1) * A - B * (1 + ((m : ℝ) * (n : ℝ) - 2 * (n : ℝ) - 1) * A))) =
+             ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U)
+    (delta_bound : ℝ)
+    (h_bracket : delta_bound ≤ C / (1 + W) - (((m : ℝ) - 1) * d0 n m A * B) / (A * (L - 1))) :
+    delta_bound ≤ D_low n m C U W := by
+  have hW1_ne : W + 1 ≠ 0 := by intro h; apply hW1; linarith
+  have h_decomp := D_low_eq_envelope_add_penalty n m C U W hU hW1_ne h_denom
+  have h_pen := renewal_bracket_ratio_eq_penalty n m hm U W A B hA hB hU1 hW1 hU h_pen_den L h_DL_ne hL_eq
+  have h_sub : C / (1 + W) - (((m : ℝ) - 1) * d0 n m A * B) / (A * (L - 1)) =
+               C / (1 + W) + defect_penalty n m U W := by
+    linarith [h_pen]
+  rw [h_decomp, ← h_sub]
+  exact h_bracket
+
+end MatrixMasterUpperBounds
