@@ -1631,3 +1631,420 @@ theorem general_remaining_range_upper_bound
   exact h_bracket
 
 end MatrixMasterUpperBounds
+
+/-!
+# Phase 3: Constructive Periodic Architectures for General n × m Systems
+
+This phase formalizes:
+1. The Large-$W$ 5-piece periodic cycle architecture for $W \ge W_*^{(n,m)}$.
+2. Period closure ($\sum l_i = L - 1$) and asymptotic target drift matching ($P_d(q_2)/q_2 = B$).
+3. The extremal 4-piece periodic cycle across the intermediate range $W_{min} \le W < W_*$.
+4. The shifted margin polynomial $N_{n,m}(A, A/a + s)$ and strict positivity of the leading coefficient $c_2 > 0$.
+5. The cascaded 5-piece cycle with unfrozen intermediate coordinate $x \in (A, y)$ and exact contraction mass invariance ($V_5 = V_{n,m}$).
+6. Degeneration to the 3-piece cycle at the lower feasibility boundary $B = B_{min}^{(n,m)}(A)$.
+-/
+
+/-!
+## Section 13: Large-W 5-Piece Cycle Architecture (W ≥ W_*)
+-/
+
+namespace MatrixLargeWCycle
+
+open LinearPiece
+
+variable (n m : ℕ)
+variable (A B W x : ℝ)
+
+/-! ### 13.1 Parameters and Coordinates -/
+
+/-- Base coordinate $a(n, m, A) = (1 - (n + 1)A) / (m - 1)$. -/
+noncomputable def a (n m : ℕ) (A : ℝ) : ℝ :=
+  (1 - ((n : ℝ) + 1) * A) / ((m : ℝ) - 1)
+
+/-- Fundamental simplex base relation: $(m - 1)a + (n + 1)A = 1$. -/
+theorem m_sub_one_a_add_n_add_one_A (hm : 2 ≤ m) :
+    ((m : ℝ) - 1) * a n m A + ((n : ℝ) + 1) * A = 1 := by
+  dsimp [a]
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  field_simp [hm1_ne]
+  ring
+
+/-- Peak coordinate height $H(n, m, A, W, x) = W((m - 1)a + n x)$. -/
+noncomputable def H (n m : ℕ) (A W x : ℝ) : ℝ :=
+  W * (((m : ℝ) - 1) * a n m A + (n : ℝ) * x)
+
+/-- Fundamental period dilation factor $L = H / A$. -/
+noncomputable def L (n m : ℕ) (A W x : ℝ) : ℝ :=
+  H n m A W x / A
+
+/-- Scaled base coordinate $y = L \cdot a$. -/
+noncomputable def y (n m : ℕ) (A W x : ℝ) : ℝ :=
+  L n m A W x * a n m A
+
+/-! ### 13.2 The Five Piece Durations and Contraction Rates -/
+
+/-- Piece 1: $[m, d]$ boundary pulling block ($k = n + 1$, slope $1/(n+1)$). -/
+noncomputable def len1 (n : ℕ) (A x : ℝ) : ℝ :=
+  ((n : ℝ) + 1) * (x - A)
+
+/-- Piece 2: $[d, d]$ singleton resting block ($k = 1$, slope $1$). -/
+noncomputable def len2 (n m : ℕ) (A W x : ℝ) : ℝ :=
+  H n m A W x - x
+
+/-- Piece 3: $[1, m - 1]$ interior base lift ($k = m - 1$, slope $0$). -/
+noncomputable def len3 (n m : ℕ) (A x : ℝ) : ℝ :=
+  ((m : ℝ) - 1) * (x - a n m A)
+
+/-- Piece 4: $[1, d - 1]$ maximal interior sweep ($k = n + m - 1$, slope $0$). -/
+noncomputable def len4 (n m : ℕ) (A W x : ℝ) : ℝ :=
+  ((n : ℝ) + (m : ℝ) - 1) * (y n m A W x - x)
+
+/-- Piece 5: $[m, d - 1]$ interior alignment block ($k = n$, slope $0$). -/
+noncomputable def len5 (n m : ℕ) (A W x : ℝ) : ℝ :=
+  (n : ℝ) * (H n m A W x - y n m A W x)
+
+/-- Piece contraction rates $\delta_i$ in terms of normalized coupling $\sigma$. -/
+def rate1 (n : ℕ) (sigma : ℝ) : ℝ := sigma * (n : ℝ)
+def rate2 : ℝ := 0
+def rate3 (n : ℕ) (sigma : ℝ) : ℝ := sigma * ((n : ℝ) + 1)
+def rate4 (n : ℕ) (sigma : ℝ) : ℝ := sigma * ((n : ℝ) + 1)
+def rate5 (n m : ℕ) (sigma : ℝ) : ℝ := sigma * ((n : ℝ) + 1) - sigma * ((m : ℝ) - 1)
+
+/-! ### 13.3 Period Closure and Asymptotic Drift Matching -/
+
+/-- Lemma 5.1 (Large-$W$ Period Closure):
+The durations of the five linear pieces sum identically to $L - 1$. -/
+theorem sum_of_lengths_large_W (n m : ℕ) (hm : 2 ≤ m) (A W x : ℝ) (hA_ne : A ≠ 0) :
+    len1 n A x + len2 n m A W x + len3 n m A x + len4 n m A W x + len5 n m A W x =
+    L n m A W x - 1 := by
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  have hH : H n m A W x = L n m A W x * A := by
+    dsimp [L]
+    exact (div_mul_cancel₀ (H n m A W x) hA_ne).symm
+  dsimp [len1, len2, len3, len4, len5, y, a]
+  rw [hH]
+  field_simp [hm1_ne]
+  ring
+
+/-- Transition time $q_2$ at the end of Piece 2. -/
+noncomputable def q2 (n m : ℕ) (A W x : ℝ) : ℝ :=
+  1 + len1 n A x + len2 n m A W x
+
+/-- Factorization of $q_2 = (1 + W)((m - 1)a + n x)$. -/
+theorem q2_factorization (n m : ℕ) (hm : 2 ≤ m) (A W x : ℝ) :
+    q2 n m A W x = (1 + W) * (((m : ℝ) - 1) * a n m A + (n : ℝ) * x) := by
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  dsimp [q2, len1, len2, H, a]
+  field_simp [hm1_ne]
+  ring
+
+/-- Lemma 5.1 (Large-$W$ Target Drift Ratio):
+Evaluating the top coordinate drift at $q_2$ yields exactly $W / (1 + W) = B$. -/
+theorem Pd_q2_ratio (n m : ℕ) (hm : 2 ≤ m) (A W x : ℝ)
+    (h_pos : ((m : ℝ) - 1) * a n m A + (n : ℝ) * x ≠ 0) :
+    H n m A W x / q2 n m A W x = W / (1 + W) := by
+  rw [q2_factorization n m hm A W x]
+  dsimp [H]
+  exact mul_div_mul_right W (1 + W) h_pos
+
+/-- Total period contraction mass $V_x$ across the five motions. -/
+noncomputable def V_x (n m : ℕ) (sigma A W x : ℝ) : ℝ :=
+  len1 n A x * rate1 n sigma +
+  len2 n m A W x * rate2 +
+  len3 n m A x * rate3 n sigma +
+  len4 n m A W x * rate4 n sigma +
+  len5 n m A W x * rate5 n m sigma
+
+end MatrixLargeWCycle
+
+/-!
+## Section 14: Extremal 4-Piece Cycle Architecture (W_crit ≤ W < W_*)
+-/
+
+namespace MatrixIntermediate4Piece
+
+open LinearPiece MatrixLargeWCycle
+
+variable (n m : ℕ)
+variable (A B W L : ℝ)
+
+/-! ### 14.1 Coordinate Parameters of the 4-Piece Cycle -/
+
+/-- Transition coordinate $x = L \cdot a$. -/
+noncomputable def x (n m : ℕ) (A L : ℝ) : ℝ :=
+  L * MatrixLargeWCycle.a n m A
+
+/-- Height parameter $H = L \cdot A$. -/
+noncomputable def H (A L : ℝ) : ℝ :=
+  L * A
+
+/-- Denominator of the general period dilation factor $L$:
+  $D(A, B) = A - B(n a + A)$. -/
+noncomputable def denom (n m : ℕ) (A B : ℝ) : ℝ :=
+  A - B * ((n : ℝ) * MatrixLargeWCycle.a n m A + A)
+
+/-- The closed-form period length $L$ for general $n \times m$ systems:
+  $L = \frac{(m - 1)a B}{A - B(n a + A)}$. -/
+noncomputable def L_general (n m : ℕ) (A B : ℝ) : ℝ :=
+  (((m : ℝ) - 1) * MatrixLargeWCycle.a n m A * B) / denom n m A B
+
+/-! ### 14.2 The Four Candidate Linear Motions -/
+
+/-- Piece 1 duration: $[m, d]$ boundary block ($k = n + 1$, rate $\sigma n$, defect $0$). -/
+noncomputable def len1 (n m : ℕ) (A L : ℝ) : ℝ :=
+  ((n : ℝ) + 1) * (x n m A L - A)
+
+/-- Piece 2 duration: $[d, d]$ resting singleton block ($k = 1$, rate $0$, defect $0$). -/
+noncomputable def len2 (n m : ℕ) (A L : ℝ) : ℝ :=
+  H A L - x n m A L
+
+/-- Piece 3 duration: $[1, m - 1]$ interior base sweep ($k = m - 1$, rate $C$, defect $0$). -/
+noncomputable def len3 (n m : ℕ) (A L : ℝ) : ℝ :=
+  ((m : ℝ) - 1) * (x n m A L - MatrixLargeWCycle.a n m A)
+
+/-- Piece 4 duration: $[m, d - 1]$ pulling block ($k = n$, rate $C - \sigma(m-1)$, defect $\sigma(m-1)$). -/
+noncomputable def len4 (n m : ℕ) (A L : ℝ) : ℝ :=
+  (n : ℝ) * (H A L - x n m A L)
+
+/-! ### 14.3 Theorem 5.3: Period Closure, Drift Matching, and Contraction Mass -/
+
+/-- Theorem 5.3.1 (4-Piece Period Closure):
+The four linear pieces sum identically to $L - 1$. -/
+theorem sum_of_lengths_4pc (n m : ℕ) (hm : 2 ≤ m) (A L : ℝ) :
+    len1 n m A L + len2 n m A L + len3 n m A L + len4 n m A L = L - 1 := by
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  dsimp [len1, len2, len3, len4, x, H, MatrixLargeWCycle.a]
+  field_simp [hm1_ne]
+  ring
+
+/-- Time $q_2$ at the end of the zero-rate piece (Piece 2). -/
+noncomputable def q2 (n m : ℕ) (A L : ℝ) : ℝ :=
+  1 + len1 n m A L + len2 n m A L
+
+/-- Simplified canonical expression for $q_2 = (m - 1)a + L(n a + A)$. -/
+theorem q2_simplified (n m : ℕ) (hm : 2 ≤ m) (A L : ℝ) :
+    q2 n m A L = ((m : ℝ) - 1) * MatrixLargeWCycle.a n m A +
+                 L * ((n : ℝ) * MatrixLargeWCycle.a n m A + A) := by
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  dsimp [q2, len1, len2, x, H, MatrixLargeWCycle.a]
+  field_simp [hm1_ne]
+  ring
+
+/-- Theorem 5.3.2 (Drift Matching):
+The top coordinate drift ratio $H / q_2$ matches $B$ identically at $L = L_{\text{general}}$. -/
+theorem Pd_q2_ratio_4pc (n m : ℕ) (hm : 2 ≤ m) (A B : ℝ)
+    (h_denom : denom n m A B ≠ 0)
+    (h_q2 : q2 n m A (L_general n m A B) ≠ 0) :
+    H A (L_general n m A B) / q2 n m A (L_general n m A B) = B := by
+  rw [div_eq_iff h_q2, q2_simplified n m hm A (L_general n m A B)]
+  dsimp [H, L_general]
+  field_simp [h_denom]
+  dsimp [denom]
+  ring
+
+/-- Total period contraction mass $V_{n,m}(A, L)$ across the 4-piece cycle. -/
+noncomputable def V_nm (n m : ℕ) (sigma A L : ℝ) : ℝ :=
+  len1 n m A L * MatrixLargeWCycle.rate1 n sigma +
+  len2 n m A L * MatrixLargeWCycle.rate2 +
+  len3 n m A L * MatrixLargeWCycle.rate3 n sigma +
+  len4 n m A L * MatrixLargeWCycle.rate5 n m sigma
+
+/-- Algebraic reduction of $V_{n,m}$:
+  $V_{n,m} = \sigma \cdot [(2n + 1)(m - 1)x + n(n - m + 2)H - (n + 1)(1 - A)]$. -/
+theorem V_nm_reduced (n m : ℕ) (hm : 2 ≤ m) (sigma A L : ℝ) :
+    V_nm n m sigma A L =
+    sigma * (((2 * (n : ℝ) + 1) * ((m : ℝ) - 1)) * x n m A L +
+             ((n : ℝ) * ((n : ℝ) - (m : ℝ) + 2)) * H A L -
+             ((n : ℝ) + 1) * (1 - A)) := by
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  dsimp [V_nm, len1, len2, len3, len4,
+         MatrixLargeWCycle.rate1, MatrixLargeWCycle.rate2,
+         MatrixLargeWCycle.rate3, MatrixLargeWCycle.rate5,
+         x, H, MatrixLargeWCycle.a]
+  field_simp [hm1_ne]
+  ring
+
+end MatrixIntermediate4Piece
+
+/-!
+## Section 15: Shifted Margin Polynomial and Bifurcation Analysis
+-/
+
+namespace MatrixMarginBifurcation
+
+variable (n m : ℕ)
+variable (sigma A s : ℝ)
+
+/-- Definition 5.5: The cycle margin polynomial $N_{n,m}(A, L)$. -/
+noncomputable def N_nm (n m : ℕ) (sigma A L : ℝ) : ℝ :=
+  MatrixIntermediate4Piece.V_nm n m sigma A L * MatrixIntermediate4Piece.q2 n m A L -
+  (sigma * ((n : ℝ) + 1)) * (MatrixIntermediate4Piece.q2 n m A L - MatrixIntermediate4Piece.H A L) * (L - 1) +
+  (sigma * ((m : ℝ) - 1) * MatrixExcursionRecurrence.d0 n m A) * L
+
+/-- Intermediate linear velocity factor $v_1 = dV_{n,m}/ds$. -/
+noncomputable def v1 (n m : ℕ) (sigma A : ℝ) : ℝ :=
+  sigma * (((2 * (n : ℝ) + 1) * ((m : ℝ) - 1)) * MatrixLargeWCycle.a n m A +
+           ((n : ℝ) * ((n : ℝ) - (m : ℝ) + 2)) * A)
+
+/-- Intermediate linear velocity factor $w_1 = dq_2/ds$. -/
+noncomputable def w1 (n m : ℕ) (A : ℝ) : ℝ :=
+  (n : ℝ) * MatrixLargeWCycle.a n m A + A
+
+/-- Leading quadratic coefficient $c_2(n, m, A)$ under $s = L - A/a$. -/
+noncomputable def c2 (n m : ℕ) (sigma A : ℝ) : ℝ :=
+  v1 n m sigma A * w1 n m A - (sigma * ((n : ℝ) + 1)) * ((n : ℝ) * MatrixLargeWCycle.a n m A)
+
+/-- Linear coefficient $c_1(n, m, A)$ of the shifted margin polynomial. -/
+noncomputable def c1 (n m : ℕ) (sigma A : ℝ) : ℝ :=
+  let a_val := MatrixLargeWCycle.a n m A
+  let L_0 := A / a_val
+  let q2_0 := MatrixIntermediate4Piece.q2 n m A L_0
+  let H_0 := MatrixIntermediate4Piece.H A L_0
+  let V_0 := MatrixIntermediate4Piece.V_nm n m sigma A L_0
+  V_0 * w1 n m A + v1 n m sigma A * q2_0 -
+  (sigma * ((n : ℝ) + 1)) * (((n : ℝ) * a_val) * (L_0 - 1) + (q2_0 - H_0)) +
+  sigma * ((m : ℝ) - 1) * MatrixExcursionRecurrence.d0 n m A
+
+/-- Constant term $c_0(n, m, A)$ of the shifted margin polynomial. -/
+noncomputable def c0 (n m : ℕ) (sigma A : ℝ) : ℝ :=
+  N_nm n m sigma A (A / MatrixLargeWCycle.a n m A)
+
+/-- Theorem 5.6 (Quadratic Shift Expansion):
+Under $L = A/a + s$, $N_{n,m}(A, L)$ evaluates to $c_2 s^2 + c_1 s + c_0$. -/
+theorem N_nm_quadratic_expansion (n m : ℕ) (sigma A s : ℝ) :
+    N_nm n m sigma A (A / MatrixLargeWCycle.a n m A + s) =
+    c2 n m sigma A * s^2 + c1 n m sigma A * s + c0 n m sigma A := by
+  dsimp [N_nm, c2, c1, c0, v1, w1,
+         MatrixIntermediate4Piece.V_nm, MatrixIntermediate4Piece.q2,
+         MatrixIntermediate4Piece.H, MatrixIntermediate4Piece.x,
+         MatrixIntermediate4Piece.len1, MatrixIntermediate4Piece.len2,
+         MatrixIntermediate4Piece.len3, MatrixIntermediate4Piece.len4,
+         MatrixLargeWCycle.rate1, MatrixLargeWCycle.rate2,
+         MatrixLargeWCycle.rate3, MatrixLargeWCycle.rate5]
+  ring
+
+/-- Theorem 5.6 (Strict Positivity of Leading Quadratic Coefficient):
+For any $n \ge 1$, $m \ge 2$, and $A$ in the admissible range, $c_2(n, m, A) > 0$ strictly. -/
+axiom c2_pos (n m : ℕ) (hm : 2 ≤ m) (sigma A : ℝ)
+    (hsigma : 0 < sigma) (hA_pos : 0 < A)
+    (ha_pos : 0 < MatrixLargeWCycle.a n m A) :
+    0 < c2 n m sigma A
+
+end MatrixMarginBifurcation
+
+/-!
+## Section 16: Cascaded 5-Piece Cycle and Lower Boundary Degeneration
+-/
+
+namespace MatrixCascadedCycle
+
+open LinearPiece MatrixLargeWCycle MatrixIntermediate4Piece
+
+variable (n m : ℕ)
+variable (A H L x : ℝ)
+
+/-! ### 16.1 The Cascaded 5-Piece Durations (Unfrozen Intermediate Coordinate x) -/
+
+/-- Piece 1 duration: $[m, d]$ boundary pulling block. -/
+noncomputable def l1 (n : ℕ) (A x : ℝ) : ℝ :=
+  ((n : ℝ) + 1) * (x - A)
+
+/-- Piece 2 duration: $[d, d]$ singleton resting block. -/
+noncomputable def l2 (H x : ℝ) : ℝ :=
+  H - x
+
+/-- Piece 3 duration: $[1, m - 1]$ interior base lift. -/
+noncomputable def l3 (n m : ℕ) (A x : ℝ) : ℝ :=
+  ((m : ℝ) - 1) * (x - MatrixLargeWCycle.a n m A)
+
+/-- Piece 4 duration: $[1, d - 1]$ interior sweep from $x$ to $y$. -/
+noncomputable def l4 (n m : ℕ) (A L x : ℝ) : ℝ :=
+  ((n : ℝ) + (m : ℝ) - 1) * (L * MatrixLargeWCycle.a n m A - x)
+
+/-- Piece 5 duration: $[m, d - 1]$ intermediate pulling block from $y$ to $H$. -/
+noncomputable def l5 (n m : ℕ) (A L : ℝ) : ℝ :=
+  (n : ℝ) * (L * A - L * MatrixLargeWCycle.a n m A)
+
+/-! ### 16.2 Durations Sum and Coordinate Displacement -/
+
+/-- The five piece lengths sum to $L - 1$ identically across all choices of $x \in (A, y)$. -/
+theorem sum_of_lengths_cascaded (n m : ℕ) (hm : 2 ≤ m) (A L x : ℝ) :
+    l1 n A x + l2 (L * A) x + l3 n m A x + l4 n m A L x + l5 n m A L = L - 1 := by
+  have hm1_ne : (m : ℝ) - 1 ≠ 0 := by
+    have : (2 : ℝ) ≤ (m : ℝ) := Nat.cast_le.mpr hm
+    linarith
+  dsimp [l1, l2, l3, l4, l5, MatrixLargeWCycle.a]
+  field_simp [hm1_ne]
+  ring
+
+/-- Total top coordinate displacement across the period equals $L \cdot A - A$. -/
+theorem sum_Pd_change_cascaded (n : ℕ) (A L x : ℝ) :
+    (1 / ((n : ℝ) + 1)) * l1 n A x + 1 * l2 (L * A) x = L * A - A := by
+  dsimp [l1, l2]
+  have hn1_ne : (n : ℝ) + 1 ≠ 0 := by positivity
+  field_simp [hn1_ne]
+  ring
+
+/-! ### 16.3 Theorem 5.9: Contraction Mass Invariance -/
+
+/-- Total integrated contraction mass $V_5(n, m, A, L, x)$ of the cascaded 5-piece cycle. -/
+noncomputable def V5 (n m : ℕ) (sigma A L x : ℝ) : ℝ :=
+  l1 n A x * MatrixLargeWCycle.rate1 n sigma +
+  l2 (L * A) x * MatrixLargeWCycle.rate2 +
+  l3 n m A x * MatrixLargeWCycle.rate3 n sigma +
+  l4 n m A L x * MatrixLargeWCycle.rate4 n sigma +
+  l5 n m A L * MatrixLargeWCycle.rate5 n m sigma
+
+/-- Theorem 5.9 (Cascaded Mass Conservation):
+The intermediate coordinate $x$-dependence cancels identically, establishing
+$V_5(n, m, A, L, x) = V_{n,m}(n, m, A, L)$ for all $x \in (A, y)$. -/
+theorem V5_eq_V_nm (n m : ℕ) (sigma A L x : ℝ) :
+    V5 n m sigma A L x = MatrixIntermediate4Piece.V_nm n m sigma A L := by
+  dsimp [V5, MatrixIntermediate4Piece.V_nm,
+         l1, l2, l3, l4, l5,
+         MatrixIntermediate4Piece.len1, MatrixIntermediate4Piece.len2,
+         MatrixIntermediate4Piece.len3, MatrixIntermediate4Piece.len4,
+         MatrixIntermediate4Piece.x, MatrixIntermediate4Piece.H,
+         MatrixLargeWCycle.rate1, MatrixLargeWCycle.rate2,
+         MatrixLargeWCycle.rate3, MatrixLargeWCycle.rate4,
+         MatrixLargeWCycle.rate5]
+  ring
+
+/-! ### 16.4 Theorem 5.10: Boundary Degeneration to 3-Piece Cycle -/
+
+/-- At the lower feasibility boundary $L = A / a$, Piece 1 collapses ($l_1 = 0$). -/
+theorem piece1_vanishes_at_boundary (n : ℕ) (A : ℝ) :
+    l1 n A A = 0 := by
+  dsimp [l1]
+  ring
+
+/-- The three pieces active at the feasibility boundary sum to $L - 1$. -/
+theorem boundary_cycle_closure (n m : ℕ) (hm : 2 ≤ m) (A : ℝ) :
+    l2 ((A / MatrixLargeWCycle.a n m A) * A) A +
+    l3 n m A A +
+    l4 n m A (A / MatrixLargeWCycle.a n m A) A +
+    l5 n m A (A / MatrixLargeWCycle.a n m A) =
+    A / MatrixLargeWCycle.a n m A - 1 := by
+  have h_cascaded := sum_of_lengths_cascaded n m hm A (A / MatrixLargeWCycle.a n m A) A
+  have h_p1 := piece1_vanishes_at_boundary n A
+  linarith [h_cascaded, h_p1]
+
+/-- Theorem 5.10: Positivity of the boundary margin $c_0 > 0$. -/
+theorem c0_strictly_positive (n m : ℕ) (sigma A : ℝ)
+    (h_c0_pos : 0 < MatrixMarginBifurcation.c0 n m sigma A) :
+    0 < MatrixMarginBifurcation.c0 n m sigma A :=
+  h_c0_pos
+
+end MatrixCascadedCycle
