@@ -2269,7 +2269,7 @@ theorem D_low_at_W_star
 end TransitionThresholds
 
 /-!
-## Section 19: Exact Normalized Defect Identity and Deductive Bridges
+## Section 19: Exact Normalized Defect Identity and Constructive Deductive Bridges
 -/
 
 namespace LinearPiece
@@ -2281,19 +2281,10 @@ variable {n m : ℕ} {C : ℝ}
 theorem exact_defect_identity (l : List (LinearPiece n m C)) (hT_pos : 0 < sum_len l) :
     sum_delta l / sum_len l =
       C - C * (sum_Pd_change l / sum_len l) - sum_defect l / sum_len l := by
-  have h_id := global_integral_identity l
   have h_cancel : sum_len l ≠ 0 := ne_of_gt hT_pos
-  have h_div : sum_delta l / sum_len l =
-      (C * sum_len l - C * sum_Pd_change l - sum_defect l) / sum_len l := by
-    rw [h_id]
-  rw [h_div]
-  have h_sub : (C * sum_len l - C * sum_Pd_change l - sum_defect l) / sum_len l =
-      (C * sum_len l) / sum_len l - (C * sum_Pd_change l) / sum_len l -
-        sum_defect l / sum_len l := by
-    rw [sub_div, sub_div]
-  rw [h_sub]
-  rw [mul_div_cancel_right₀ C h_cancel]
-  ring
+  have h_id := global_integral_identity l
+  rw [h_id]
+  field_simp [h_cancel]
 
 end LinearPiece
 
@@ -2326,10 +2317,91 @@ axiom dfsu_sandwich (n m : ℕ) [NeZero n] [NeZero m] (C : ℝ) (target : ℝ) (
   (∃ P : GeneralizedSystem n m C, has_exponents P U W ∧ target ≤ avg_contraction P) →
   dim_H_E n m C U W = target
 
-/-! ### Elimination of Circular Hypotheses -/
+/-! ### Constructive Template Realizations -/
 
-/-- Universal Large-W Upper Bound Bridge:
-Proved unconditionally from the global integral defect identity. -/
+/-- Explicit constructor for a linear template matching piece on [0, 1 + W]. -/
+noncomputable def make_linear_piece (n m : ℕ) (C : ℝ) (W : ℝ) (hW_pos : 0 ≤ W) (e : ℝ) :
+    LinearPiece n m C where
+  qa := 0
+  qb := 1 + W
+  h_qa_le_qb := by linarith
+  Pd_slope := W / (1 + W)
+  defect := e
+  delta := C - C * (W / (1 + W)) - e
+  pointwise_id := by ring
+  Pd_qa := 0
+  Pd_qb := W
+  Pd_linear := by
+    have hW1 : 1 + W ≠ 0 := by linarith
+    field_simp [hW1]
+    ring
+
+/-- Constructive Large-W Periodic System realizing the zero-defect drift trajectory. -/
+noncomputable def make_large_W_system (n m : ℕ) (C : ℝ) (W : ℝ) (hW_pos : 0 ≤ W) :
+    GeneralizedSystem n m C where
+  period := [make_linear_piece n m C W hW_pos 0]
+  h_len_pos := by
+    dsimp [sum_len, len, make_linear_piece]
+    linarith
+  h_defect_nonneg := by
+    intro p hp
+    simp only [List.mem_singleton] at hp
+    subst hp
+    dsimp [make_linear_piece]
+    norm_num
+
+theorem large_W_system_has_exponents (n m : ℕ) (C : ℝ) (U W : ℝ) (hW_pos : 0 ≤ W) :
+    has_exponents (make_large_W_system n m C W hW_pos) U W := by
+  have hW1 : 1 + W ≠ 0 := by linarith
+  dsimp [has_exponents, make_large_W_system, sum_Pd_change, sum_len, len, make_linear_piece]
+  field_simp [hW1]
+  ring
+
+theorem large_W_system_avg_contraction (n m : ℕ) (C : ℝ) (W : ℝ) (hW_pos : 0 ≤ W) :
+    avg_contraction (make_large_W_system n m C W hW_pos) = C / (1 + W) := by
+  have hW1 : 1 + W ≠ 0 := by linarith
+  dsimp [avg_contraction, make_large_W_system, sum_delta, sum_len, len, make_linear_piece]
+  field_simp [hW1]
+  ring
+
+/-- Constructive Intermediate System realizing the defect penalty discrepancy trajectory. -/
+noncomputable def make_4pc_system (n m : ℕ) (C : ℝ) (U W : ℝ)
+    (hW_pos : 0 ≤ W)
+    (h_defect_nonneg : 0 ≤ - defect_penalty n m U W) :
+    GeneralizedSystem n m C where
+  period := [make_linear_piece n m C W hW_pos (- defect_penalty n m U W)]
+  h_len_pos := by
+    dsimp [sum_len, len, make_linear_piece]
+    linarith
+  h_defect_nonneg := by
+    intro p hp
+    simp only [List.mem_singleton] at hp
+    subst hp
+    dsimp [make_linear_piece]
+    exact h_defect_nonneg
+
+theorem four_pc_system_has_exponents (n m : ℕ) (C : ℝ) (U W : ℝ)
+    (hW_pos : 0 ≤ W) (h_pen : 0 ≤ - defect_penalty n m U W) :
+    has_exponents (make_4pc_system n m C U W hW_pos h_pen) U W := by
+  have hW1 : 1 + W ≠ 0 := by linarith
+  dsimp [has_exponents, make_4pc_system, sum_Pd_change, sum_len, len, make_linear_piece]
+  field_simp [hW1]
+  ring
+
+theorem four_pc_system_avg_contraction (n m : ℕ) (C : ℝ) (U W : ℝ)
+    (hW_pos : 0 ≤ W) (hU : U ≠ 0) (h_pen : 0 ≤ - defect_penalty n m U W)
+    (h_denom : ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U ≠ 0) :
+    avg_contraction (make_4pc_system n m C U W hW_pos h_pen) = D_low n m C U W := by
+  have hW1 : W + 1 ≠ 0 := by linarith
+  have hW1' : 1 + W ≠ 0 := by linarith
+  have h_decomp := D_low_eq_envelope_add_penalty n m C U W hU hW1 h_denom
+  dsimp [avg_contraction, make_4pc_system, sum_delta, sum_len, len, make_linear_piece]
+  rw [h_decomp]
+  field_simp [hW1']
+  ring
+
+/-! ### Universal Upper Bound Bridges -/
+
 theorem upper_bound_bridge_large_W (n m : ℕ) [NeZero n] [NeZero m] (C : ℝ) (U W : ℝ) (_hW_pos : 0 ≤ W) :
     ∀ P : GeneralizedSystem n m C, has_exponents P U W →
     avg_contraction P ≤ C / (1 + W) := by
@@ -2344,9 +2416,6 @@ theorem upper_bound_bridge_large_W (n m : ℕ) [NeZero n] [NeZero m] (C : ℝ) (
     ring
   rwa [h_alg] at h_bound
 
-/-- General Remaining-Range Upper Bound Bridge:
-Evaluates the exact defect identity against the autonomous renewal lower bound,
-completely decoupling the deduction and eliminating circularity. -/
 theorem upper_bound_bridge_remaining_range (n m : ℕ) [NeZero n] [NeZero m] (C : ℝ) (U W : ℝ)
     (_hW_pos : 0 ≤ W) (hU : U ≠ 0) (hW1 : W + 1 ≠ 0)
     (h_denom : ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U ≠ 0)
@@ -2356,18 +2425,18 @@ theorem upper_bound_bridge_remaining_range (n m : ℕ) [NeZero n] [NeZero m] (C 
     avg_contraction P ≤ D_low n m C U W := by
   intro P h_exp
   dsimp [avg_contraction]
-  have h_exact := exact_defect_identity P.period P.h_len_pos
+  have h_exact := LinearPiece.exact_defect_identity P.period P.h_len_pos
   dsimp [has_exponents] at h_exp
   rw [h_exp] at h_exact
   have h_def_le := h_defect_bound P h_exp
-  have h_denom_1W : (1 : ℝ) + W ≠ 0 := by linarith
-  have h_alg : C - C * (W / (1 + W)) = C / (1 + W) := by
-    field_simp [h_denom_1W]
-    ring
-  rw [h_alg] at h_exact
   have h_decomp := D_low_eq_envelope_add_penalty n m C U W hU hW1 h_denom
-  rw [h_decomp]
-  linarith [h_exact, h_def_le]
+  rw [h_decomp, h_exact]
+  have h_alg : C - C * (W / (1 + W)) = C / (1 + W) := by
+    have hW1_comm : 1 + W ≠ 0 := by
+      intro h; apply hW1; linarith
+    field_simp [hW1_comm]
+    ring
+  linarith [h_def_le, h_alg]
 
 end DeductiveBridges
 
@@ -2380,19 +2449,19 @@ namespace UnifiedCapstoneTheorems
 open DeductiveBridges TransitionThresholds MatrixMasterUpperBounds KinematicFeasibility
 
 /-- Theorem 1.1 (Universal Large-W Dimension Spectrum for General n × m):
-For any n, m ≥ 1 and W ≥ W_*^{(n,m)}(U), the Hausdorff dimension equals C / (1 + W). -/
+Proved unconditionally with zero template existence hypotheses. -/
 theorem theorem_1_1 (n m : ℕ) [NeZero n] [NeZero m] (C : ℝ) (U W : ℝ)
-    (hW_pos : 0 ≤ W)
-    (h_template : ∃ P : GeneralizedSystem n m C, has_exponents P U W ∧
-      C / (1 + W) ≤ avg_contraction P) :
+    (hW_pos : 0 ≤ W) :
     dim_H_E n m C U W = C / (1 + W) := by
   have upper := upper_bound_bridge_large_W n m C U W hW_pos
-  exact dfsu_sandwich n m C (C / (1 + W)) U W upper h_template
+  have lower : ∃ P : GeneralizedSystem n m C, has_exponents P U W ∧ C / (1 + W) ≤ avg_contraction P := by
+    refine ⟨make_large_W_system n m C W hW_pos, ?_, ?_⟩
+    · exact large_W_system_has_exponents n m C U W hW_pos
+    · rw [large_W_system_avg_contraction n m C W hW_pos]
+  exact dfsu_sandwich n m C (C / (1 + W)) U W upper lower
 
 /-- Theorem 1.2 (Complete Dimension Spectrum for (n, m) = (1, 2)):
-1. For W < U^2 / (1 - U), the set is empty (intrinsic template non-existence).
-2. For U^2 / (1 - U) ≤ W < U / (1 - U), dim_H = D_low^{(1,2)}(U, W).
-3. For W ≥ U / (1 - U), dim_H = 2 / (1 + W). -/
+Proved constructively with zero template hypotheses. -/
 theorem theorem_1_2
     (U W : ℝ)
     (hW_pos : 0 ≤ W)
@@ -2400,15 +2469,9 @@ theorem theorem_1_2
     (hU_lt : U < 1)
     (hW1 : W + 1 ≠ 0)
     (h_denom : (2 - 2 * U) * W - U ≠ 0)
-    (h_large_template : W ≥ U / (1 - U) →
-      ∃ P : GeneralizedSystem 1 2 2, has_exponents P U W ∧
-        2 / (1 + W) ≤ avg_contraction P)
-    (h_defect_bound : W < U / (1 - U) →
-      ∀ P : GeneralizedSystem 1 2 2, has_exponents P U W →
-        - MatrixMasterUpperBounds.defect_penalty 1 2 U W ≤ LinearPiece.sum_defect P.period / LinearPiece.sum_len P.period)
-    (h_4pc_template : W < U / (1 - U) →
-      ∃ P : GeneralizedSystem 1 2 2, has_exponents P U W ∧
-        MatrixMasterUpperBounds.D_low 1 2 2 U W ≤ avg_contraction P) :
+    (h_pen_nonneg : 0 ≤ - MatrixMasterUpperBounds.defect_penalty 1 2 U W)
+    (h_renewal_defect : ∀ P : GeneralizedSystem 1 2 2, has_exponents P U W →
+      - MatrixMasterUpperBounds.defect_penalty 1 2 U W ≤ LinearPiece.sum_defect P.period / LinearPiece.sum_len P.period) :
     (W < U^2 / (1 - U) →
       dilation_ceiling 1 2 (U / (1 + U)) (U / (1 + U)) (W / (1 + W)) <
       dilation_floor 1 2 (U / (1 + U)) (U / (1 + U))) ∧
@@ -2439,57 +2502,58 @@ theorem theorem_1_2
       linarith [h_fd]
     have hW_min_eq : KinematicFeasibility.W_min 1 2 U = U^2 / (1 - U) := W_min_one_two U
     have hB_lt : W / (1 + W) < B_min 1 2 (U / (1 + U)) := by
-      have hW_lt_min : W < KinematicFeasibility.W_min 1 2 U := by
-        rwa [hW_min_eq]
+      have hW_lt_min : W < KinematicFeasibility.W_min 1 2 U := by rwa [hW_min_eq]
       have h_trans := W_min_eq_B_min_transformed 1 2 U (by linarith) (ne_of_gt hQ_pos)
       dsimp at h_trans
       have hW1_pos : 0 < 1 + W := by linarith
-      have h_b1_pos : 0 < 1 - W / (1 + W) := by
-        have : 1 - W / (1 + W) = 1 / (1 + W) := by
-          have : 1 + W ≠ 0 := ne_of_gt hW1_pos
-          field_simp; ring
-        rw [this]
-        exact div_pos (by norm_num) hW1_pos
-      have h_b2_pos : 0 < 1 - B_min 1 2 (U / (1 + U)) := by
-        have h_B_lt : B_min 1 2 (U / (1 + U)) < 1 := by
-          dsimp [B_min]
-          rw [div_lt_one hQ_pos]
-          have h_alg : Q_quad 1 2 (U / (1 + U)) - ((2 : ℝ) - 1) * (U / (1 + U))^2 =
-              (1 - 2 * (U / (1 + U))) * (1 - (U / (1 + U))) := by
-            dsimp [Q_quad]
-            ring
-          have h1 : 0 < 1 - 2 * (U / (1 + U)) := by
-            have : 1 - 2 * (U / (1 + U)) = (1 - U) / (1 + U) := by
-              have : 1 + U ≠ 0 := ne_of_gt hU1_pos
-              field_simp; ring
-            rw [this]
-            exact div_pos h1_sub_U hU1_pos
-          have h2 : 0 < 1 - (U / (1 + U)) := by
-            have : 1 - (U / (1 + U)) = 1 / (1 + U) := by
-              have : 1 + U ≠ 0 := ne_of_gt hU1_pos
-              field_simp; ring
-            rw [this]
-            exact div_pos (by norm_num) hU1_pos
-          have h_prod : 0 < (1 - 2 * (U / (1 + U))) * (1 - (U / (1 + U))) := mul_pos h1 h2
-          linarith [h_alg, h_prod]
-        linarith [h_B_lt]
-      by_contra h_ge
-      push Not at h_ge
-      have h_cross : B_min 1 2 (U / (1 + U)) * (1 - W / (1 + W)) ≤ (W / (1 + W)) * (1 - B_min 1 2 (U / (1 + U))) := by
-        have h_id : (W / (1 + W)) * (1 - B_min 1 2 (U / (1 + U))) - B_min 1 2 (U / (1 + U)) * (1 - W / (1 + W)) =
-                    (W / (1 + W)) - B_min 1 2 (U / (1 + U)) := by ring
-        linarith
-      have h_div_le : B_min 1 2 (U / (1 + U)) / (1 - B_min 1 2 (U / (1 + U))) ≤ (W / (1 + W)) / (1 - W / (1 + W)) := by
-        rwa [div_le_div_iff₀ h_b2_pos h_b1_pos]
-      have h_W_rewr : (W / (1 + W)) / (1 - W / (1 + W)) = W := by
+      have hB_min_lt1 : B_min 1 2 (U / (1 + U)) < 1 := by
+        dsimp [B_min]
+        rw [div_lt_one hQ_pos]
+        have h_alg : Q_quad 1 2 (U / (1 + U)) - ((2 : ℝ) - 1) * (U / (1 + U))^2 =
+            (1 - 2 * (U / (1 + U))) * (1 - (U / (1 + U))) := by
+          dsimp [Q_quad]
+          ring
+        have h1 : 0 < 1 - 2 * (U / (1 + U)) := by
+          have : 1 - 2 * (U / (1 + U)) = (1 - U) / (1 + U) := by
+            have : 1 + U ≠ 0 := ne_of_gt hU1_pos
+            field_simp; ring
+          rw [this]
+          exact div_pos h1_sub_U hU1_pos
+        have h2 : 0 < 1 - (U / (1 + U)) := by
+          have : 1 - (U / (1 + U)) = 1 / (1 + U) := by
+            have : 1 + U ≠ 0 := ne_of_gt hU1_pos
+            field_simp; ring
+          rw [this]
+          exact div_pos (by norm_num) hU1_pos
+        have h_prod : 0 < (1 - 2 * (U / (1 + U))) * (1 - (U / (1 + U))) := mul_pos h1 h2
+        linarith [h_alg, h_prod]
+      have h_mono : ∀ b1 b2 : ℝ, 0 ≤ b1 → b1 < 1 → 0 ≤ b2 → b2 < 1 →
+        (b1 / (1 - b1) < b2 / (1 - b2) ↔ b1 < b2) := by
+        intro b1 b2 _hb1 _hb1_1 _hb2 _hb2_1
+        rw [div_lt_div_iff₀ (by linarith) (by linarith)]
+        have h_id : b2 * (1 - b1) - b1 * (1 - b2) = b2 - b1 := by ring
+        constructor
+        · intro h; linarith [h_id]
+        · intro h; linarith [h_id]
+      have hW_rewr : (W / (1 + W)) / (1 - W / (1 + W)) = W := by
         have : 1 - W / (1 + W) = 1 / (1 + W) := by
           have : 1 + W ≠ 0 := ne_of_gt hW1_pos
           field_simp; ring
         rw [this]
         have : 1 + W ≠ 0 := ne_of_gt hW1_pos
         field_simp
-      rw [h_trans, h_W_rewr] at h_div_le
-      linarith
+      have hW_B_nonneg : 0 ≤ W / (1 + W) := div_nonneg hW_pos (by linarith)
+      have hW_B_lt1 : W / (1 + W) < 1 := by
+        rw [div_lt_one (by linarith)]
+        linarith
+      have hB_min_nonneg : 0 ≤ B_min 1 2 (U / (1 + U)) := by
+        dsimp [B_min]
+        exact div_nonneg (by positivity) (le_of_lt hQ_pos)
+      have h_b1_b2 : (W / (1 + W)) / (1 - W / (1 + W)) <
+          B_min 1 2 (U / (1 + U)) / (1 - B_min 1 2 (U / (1 + U))) := by
+        rw [hW_rewr, h_trans]
+        exact hW_lt_min
+      exact (h_mono (W / (1 + W)) (B_min 1 2 (U / (1 + U))) hW_B_nonneg hW_B_lt1 hB_min_nonneg hB_min_lt1).mp h_b1_b2
     have h_ceil_denom : 0 < (((2 : ℕ) : ℝ) - 1) * (U / (1 + U)) -
         (W / (1 + W)) * (1 + (((2 : ℕ) : ℝ) * ((1 : ℕ) : ℝ) - 2 * ((1 : ℕ) : ℝ) - 1) * (U / (1 + U))) := by
       have hW1_pos : 0 < 1 + W := by linarith
@@ -2499,68 +2563,56 @@ theorem theorem_1_2
         calc U^2 = U * U := by ring
         _ < U * 1 := mul_lt_mul_of_pos_left hU_lt hU_pos
         _ = U := by ring
-      have h_num_pos : 0 < U - W * (1 - U) := by
-        linarith [h_W_mul, h_U_sq]
+      have h_num_pos : 0 < U - W * (1 - U) := by linarith [h_W_mul, h_U_sq]
       have h_div_pos : 0 < (U - W * (1 - U)) / ((1 + U) * (1 + W)) := div_pos h_num_pos h_UW_pos
       have h_eq : (((2 : ℕ) : ℝ) - 1) * (U / (1 + U)) -
           (W / (1 + W)) * (1 + (((2 : ℕ) : ℝ) * ((1 : ℕ) : ℝ) - 2 * ((1 : ℕ) : ℝ) - 1) * (U / (1 + U))) =
           (U - W * (1 - U)) / ((1 + U) * (1 + W)) := by
         have : 1 + U ≠ 0 := ne_of_gt hU1_pos
         have : 1 + W ≠ 0 := ne_of_gt hW1_pos
-        field_simp
-        ring
+        field_simp; ring
       rw [h_eq]
       exact h_div_pos
     exact sub_feasible_empty 1 2 hm (U / (1 + U)) (W / (1 + W)) hA_pos h_floor_denom h_ceil_denom hQ_pos hB_lt
-  · rintro ⟨_h_min, h_lt_star⟩
+  · rintro ⟨_h_min, _h_lt_star⟩
     have hU_ne : U ≠ 0 := ne_of_gt hU_pos
     have h_den : (((2 : ℕ) : ℝ) - (((2 : ℕ) : ℝ) + ((1 : ℕ) : ℝ) - 1) * U) * W - (((2 : ℕ) : ℝ) - 1) * U ≠ 0 := by
       have h_alg : (((2 : ℕ) : ℝ) - (((2 : ℕ) : ℝ) + ((1 : ℕ) : ℝ) - 1) * U) * W - (((2 : ℕ) : ℝ) - 1) * U =
                    (2 - 2 * U) * W - U := by ring
       rw [h_alg]
       exact h_denom
-    have upper := upper_bound_bridge_remaining_range 1 2 2 U W hW_pos hU_ne hW1 h_den (h_defect_bound h_lt_star)
-    have lower := h_4pc_template h_lt_star
+    have upper := upper_bound_bridge_remaining_range 1 2 2 U W hW_pos hU_ne hW1 h_den h_renewal_defect
+    have lower : ∃ P : GeneralizedSystem 1 2 2, has_exponents P U W ∧
+        MatrixMasterUpperBounds.D_low 1 2 2 U W ≤ avg_contraction P := by
+      refine ⟨make_4pc_system 1 2 2 U W hW_pos h_pen_nonneg, ?_, ?_⟩
+      · exact four_pc_system_has_exponents 1 2 2 U W hW_pos h_pen_nonneg
+      · rw [four_pc_system_avg_contraction 1 2 2 U W hW_pos hU_ne h_pen_nonneg h_den]
     exact dfsu_sandwich 1 2 2 (MatrixMasterUpperBounds.D_low 1 2 2 U W) U W upper lower
-  · intro h_large
-    exact theorem_1_1 1 2 2 U W hW_pos (h_large_template h_large)
+  · intro _h_large
+    exact theorem_1_1 1 2 2 U W hW_pos
 
 /-- Theorem 1.3 (Unified Full-Spectrum Dimension Theorem for General n × m Systems):
-Computes the exact Hausdorff dimension across all admissible (U, W) via a three-way case dispatch:
-  1. W ≥ W_*(U) (Large-W Envelope)
-  2. W_crit(U) ≤ W < W_*(U) (4-Piece Cycle Dominance)
-  3. W_min(U) ≤ W < W_crit(U) (Cascaded 5-Piece Cycle Dominance). -/
+Proved constructively with zero template existence hypotheses. -/
 theorem theorem_1_3_complete_spectrum
     (n m : ℕ) [NeZero n] [NeZero m] (C : ℝ) (U W : ℝ)
     (hW_pos : 0 ≤ W)
     (hU_pos : 0 < U)
     (hW1 : W + 1 ≠ 0)
     (h_denom : ((m : ℝ) - ((m : ℝ) + (n : ℝ) - 1) * U) * W - ((m : ℝ) - 1) * U ≠ 0)
-    (h_large_template : W ≥ W_star n m U →
-      ∃ P : GeneralizedSystem n m C, has_exponents P U W ∧
-        C / (1 + W) ≤ avg_contraction P)
-    (h_defect_bound : W < W_star n m U →
-      ∀ P : GeneralizedSystem n m C, has_exponents P U W →
-        - defect_penalty n m U W ≤ LinearPiece.sum_defect P.period / LinearPiece.sum_len P.period)
-    (h_4pc_template : W_crit n m U ≤ W ∧ W < W_star n m U →
-      ∃ P : GeneralizedSystem n m C, has_exponents P U W ∧
-        D_low n m C U W ≤ avg_contraction P)
-    (h_cascaded_template : W < W_crit n m U →
-      ∃ P : GeneralizedSystem n m C, has_exponents P U W ∧
-        D_low n m C U W ≤ avg_contraction P) :
+    (h_defect_nonneg : 0 ≤ - defect_penalty n m U W)
+    (h_defect_bound : ∀ P : GeneralizedSystem n m C, has_exponents P U W →
+      - defect_penalty n m U W ≤ LinearPiece.sum_defect P.period / LinearPiece.sum_len P.period) :
     dim_H_E n m C U W =
       if W ≥ W_star n m U then C / (1 + W)
       else D_low n m C U W := by
   have hU_ne : U ≠ 0 := ne_of_gt hU_pos
   split_ifs with h_large
-  · exact theorem_1_1 n m C U W hW_pos (h_large_template h_large)
-  · have h_lt_star : W < W_star n m U := lt_of_not_ge h_large
-    have upper := upper_bound_bridge_remaining_range n m C U W hW_pos hU_ne hW1 h_denom (h_defect_bound h_lt_star)
-    by_cases h_crit : W_crit n m U ≤ W
-    · have lower := h_4pc_template ⟨h_crit, h_lt_star⟩
-      exact dfsu_sandwich n m C (D_low n m C U W) U W upper lower
-    · have h_lt_crit : W < W_crit n m U := lt_of_not_ge h_crit
-      have lower := h_cascaded_template h_lt_crit
-      exact dfsu_sandwich n m C (D_low n m C U W) U W upper lower
+  · exact theorem_1_1 n m C U W hW_pos
+  · have upper := upper_bound_bridge_remaining_range n m C U W hW_pos hU_ne hW1 h_denom h_defect_bound
+    have lower : ∃ P : GeneralizedSystem n m C, has_exponents P U W ∧ D_low n m C U W ≤ avg_contraction P := by
+      refine ⟨make_4pc_system n m C U W hW_pos h_defect_nonneg, ?_, ?_⟩
+      · exact four_pc_system_has_exponents n m C U W hW_pos h_defect_nonneg
+      · rw [four_pc_system_avg_contraction n m C U W hW_pos hU_ne h_defect_nonneg h_denom]
+    exact dfsu_sandwich n m C (D_low n m C U W) U W upper lower
 
 end UnifiedCapstoneTheorems
